@@ -12,9 +12,7 @@ struct PhotoLibraryView: View {
     @State private var selectedItem: MediaItem?
     @State private var showingDocumentPicker = false
     
-    let columns = [
-        GridItem(.adaptive(minimum: 120), spacing: 2)
-    ]
+    let columns = Array(repeating: GridItem(.flexible(), spacing: 1), count: 5)
     
     var body: some View {
         NavigationView {
@@ -117,11 +115,9 @@ struct PhotoLibraryView: View {
     
     private var photoGridView: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 2) {
+            LazyVGrid(columns: columns, spacing: 1) {
                 ForEach(viewModel.mediaItems) { item in
                     PhotoThumbnailView(mediaItem: item)
-                        .aspectRatio(1, contentMode: .fill)
-                        .clipped()
                         .onTapGesture {
                             selectedItem = item
                         }

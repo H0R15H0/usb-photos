@@ -25,6 +25,7 @@ struct PhotoThumbnailView: View {
                 Image(uiImage: thumbnailImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .clipped()
             } else {
                 Image(systemName: "photo")
                     .font(.title)
@@ -45,6 +46,8 @@ struct PhotoThumbnailView: View {
                 .padding(8)
             }
         }
+        .frame(width: 70, height: 70)
+        .clipped()
         .task {
             await loadThumbnail()
         }
@@ -55,7 +58,18 @@ struct PhotoThumbnailView: View {
         isLoading = true
         
         do {
-            let image = try await generateThumbnail(for: mediaItem)
+            // Try to resolve the file URL using bookmark if available
+            let fileURL = try mediaItem.resolveBookmark()
+            
+            // Start accessing security scoped resource
+            let hasAccess = fileURL.startAccessingSecurityScopedResource()
+            defer {
+                if hasAccess {
+                    fileURL.stopAccessingSecurityScopedResource()
+                }
+            }
+            
+            let image = try await generateThumbnail(for: mediaItem, resolvedURL: fileURL)
             thumbnailImage = image
         } catch {
             print("Failed to load thumbnail for \(mediaItem.filename): \(error)")
@@ -64,19 +78,30 @@ struct PhotoThumbnailView: View {
         isLoading = false
     }
     
-    private func generateThumbnail(for mediaItem: MediaItem) async throws -> UIImage {
-        let url = mediaItem.url
+    private func generateThumbnail(for mediaItem: MediaItem, resolvedURL: URL) async throws -> UIImage {
         let size = CGSize(width: 300, height: 300)
         
         switch mediaItem.type {
         case .image:
-            return try await generateImageThumbnail(url: url, size: size)
+            return try await generateImageThumbnail(url: resolvedURL, size: size)
         case .video:
-            return try await generateVideoThumbnail(url: url, size: size)
+            return try await generateVideoThumbnail(url: resolvedURL, size: size)
         }
     }
     
     private func generateImageThumbnail(url: URL, size: CGSize) async throws -> UIImage {
+        // Security-scoped access is already handled at the top level
+        
+        // Try CGImageSource first (more efficient for thumbnails)
+        if let image = try? createThumbnailWithImageSource(url: url, size: size) {
+            return image
+        }
+        
+        // Fallback: Try direct UIImage loading with Data
+        return try await loadImageDirectly(url: url, size: size)
+    }
+    
+    private func createThumbnailWithImageSource(url: URL, size: CGSize) throws -> UIImage {
         guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             throw ThumbnailError.failedToCreateImageSource
         }
@@ -93,7 +118,28 @@ struct PhotoThumbnailView: View {
         return UIImage(cgImage: thumbnail)
     }
     
+    private func loadImageDirectly(url: URL, size: CGSize) async throws -> UIImage {
+        // Security-scoped access is already handled at the top level
+        let data = try Data(contentsOf: url)
+        guard let originalImage = UIImage(data: data) else {
+            throw ThumbnailError.failedToCreateThumbnail
+        }
+        
+        // Resize the image to thumbnail size
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let resizedImage = renderer.image { _ in
+            originalImage.draw(in: CGRect(origin: .zero, size: size))
+        }
+        
+        return resizedImage
+    }
+    
     private func generateVideoThumbnail(url: URL, size: CGSize) async throws -> UIImage {
+        // Security-scoped access is already handled at the top level
+        return try await createVideoThumbnail(url: url, size: size)
+    }
+    
+    private func createVideoThumbnail(url: URL, size: CGSize) async throws -> UIImage {
         let asset = AVAsset(url: url)
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true

@@ -15,6 +15,7 @@ struct MediaItem: Identifiable, Hashable {
     let type: MediaType
     let creationDate: Date?
     let fileSize: Int64
+    let bookmark: Data?
     
     enum MediaType {
         case image
@@ -40,6 +41,27 @@ struct MediaItem: Identifiable, Hashable {
     func hash(into hasher: inout Hasher) {
         hasher.combine(url)
     }
+    
+    func resolveBookmark() throws -> URL {
+        guard let bookmark = bookmark else { return url }
+        
+        var isStale = false
+        let resolvedURL = try URL(resolvingBookmarkData: bookmark, 
+                                  options: [], 
+                                  relativeTo: nil, 
+                                  bookmarkDataIsStale: &isStale)
+        
+        if isStale {
+            throw BookmarkError.staleBookmark
+        }
+        
+        return resolvedURL
+    }
+}
+
+enum BookmarkError: Error {
+    case staleBookmark
+    case failedToCreateBookmark
 }
 
 extension MediaItem {

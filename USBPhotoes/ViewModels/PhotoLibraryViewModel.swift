@@ -68,11 +68,17 @@ class PhotoLibraryViewModel: ObservableObject {
                 guard MediaItem.isSupported(url: fileURL) else { continue }
                 guard let mediaType = MediaItem.mediaType(for: fileURL) else { continue }
                 
+                // Create security bookmark for the file
+                let bookmark = try? fileURL.bookmarkData(options: [], 
+                                                        includingResourceValuesForKeys: nil, 
+                                                        relativeTo: nil)
+                
                 let item = MediaItem(
                     url: fileURL,
                     type: mediaType,
                     creationDate: resourceValues.creationDate,
-                    fileSize: Int64(resourceValues.fileSize ?? 0)
+                    fileSize: Int64(resourceValues.fileSize ?? 0),
+                    bookmark: bookmark
                 )
                 items.append(item)
             }
